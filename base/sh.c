@@ -57,12 +57,12 @@ struct cmd *parsecmd(char*);
 void
 runcmd(struct cmd *cmd)
 {
-  //int p[2];
-  //struct backcmd *bcmd;
+  int p[2];
+  struct backcmd *bcmd;
   struct execcmd *ecmd;
-  //struct listcmd *lcmd;
-  //struct pipecmd *pcmd;
-  //struct redircmd *rcmd;
+  struct listcmd *lcmd;
+  struct pipecmd *pcmd;
+  struct redircmd *rcmd;
   
   if(cmd == 0)
     exit();
@@ -84,7 +84,42 @@ runcmd(struct cmd *cmd)
     break;
 
   case LIST:
-    printf(2, "List Not Implemented\n");
+    lcmd = (struct listcmd*)cmd;
+    
+    if(lcmd->left->type == LIST){
+    	if(fork1() == 0){
+    		runcmd(lcmd->left);
+    	}
+    	wait();
+    }
+    
+    if(lcmd->left->type == EXEC){
+      if(fork1() == 0){
+		  struct execcmd *ecmd1 = (struct execcmd*)lcmd->left;
+		  if(ecmd1->argv[0] == 0)
+		  	exit();
+		  exec(ecmd1->argv[0], ecmd1->argv);
+		  printf(2, "exec %s failed\n", ecmd->argv[0]);
+      }
+      wait();
+   }
+   
+   
+    if(lcmd->right->type == LIST){
+    	if(fork1() == 0){
+    		runcmd(lcmd->right);
+    	}
+    	wait();
+    }
+ 
+    if(lcmd->right->type == EXEC){
+	  struct execcmd *ecmd1 = (struct execcmd*)lcmd->right;
+	  if(ecmd1->argv[0] == 0)
+     	 exit();
+      exec(ecmd1->argv[0], ecmd1->argv);
+      printf(2, "exec %s failed\n", ecmd->argv[0]);
+    }
+    
     break;
 
   case PIPE:
