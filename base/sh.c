@@ -78,11 +78,20 @@ runcmd(struct cmd *cmd)
     exec(ecmd->argv[0], ecmd->argv);
     printf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
-
+  
   case REDIR:
-    printf(2, "Redirection Not Implemented\n");
-    break;
+    rcmd = (struct redircmd*)cmd;
 
+    close(rcmd->fd);
+    int fd = open(rcmd->file, rcmd->mode);
+    if (fd < 0) {
+        printf(2, "open %s failed\n", rcmd->file);
+        exit();
+    }
+
+    runcmd(rcmd->cmd);
+    break;
+ 
   case LIST:
     lcmd = (struct listcmd*)cmd;
     
@@ -103,8 +112,7 @@ runcmd(struct cmd *cmd)
       }
       wait();
    }
-   
-   
+    
     if(lcmd->right->type == LIST){
     	if(fork1() == 0){
     		runcmd(lcmd->right);
