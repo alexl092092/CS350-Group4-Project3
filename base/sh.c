@@ -135,7 +135,10 @@ runcmd(struct cmd *cmd)
     break;
 
   case BACK:
-    printf(2, "Backgrounding not implemented\n");
+    bcmd = (struct backcmd*)cmd;
+    if(fork1() == 0){
+        runcmd(bcmd->cmd);
+    }
     break;
   }
   exit();
