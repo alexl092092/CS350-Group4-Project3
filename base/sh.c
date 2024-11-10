@@ -131,7 +131,31 @@ runcmd(struct cmd *cmd)
     break;
 
   case PIPE:
-    printf(2, "Pipe Not implemented\n");
+    pcmd = (struct pipecmd*)cmd;
+
+    if (pipe(p) < 0) {
+      printf(2, "Failed.\n");
+      exit();
+    }
+
+    if (fork1() == 0) {
+      dup2(p[1], 1);
+      close(p[0]);
+      runcmd(pcmd->left);
+    }
+
+    if (fork1() == 0) {
+      dup2(p[1], 1);
+      close(p[0]);
+      runcmd(pcmd->right);
+    }
+
+    close(p[0]);
+    close(p[1]);
+
+    wait();
+    wait();
+
     break;
 
   case BACK:
