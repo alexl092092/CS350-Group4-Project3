@@ -135,36 +135,71 @@ runcmd(struct cmd *cmd)
       exec(ecmd1->argv[0], ecmd1->argv);
       printf(2, "exec %s failed\n", ecmd->argv[0]);
     }
+
+    if (lcmd->left->type == PIPE) {
+      runcmd(lcmd->left);
+      runcmd(lcmd->right);
+    }
     
     break;
 
   case PIPE:
     pcmd = (struct pipecmd*)cmd;
 
-    if (pipe(p) < 0) {
-      printf(2, "Failed.\n");
-      exit();
+    int pds[2];
+    int pipe_prev = -1;
+
+    while (pcmd) {
+      if (pipe(p) < 0) {
+        printf(2, "Failed.\n");
+        exit();
+      }
+
+      if (fork1() == 0) {
+
+        if (pipe_prev != -1) {
+          dup2(pipe_prev, 0);
+          close(pipe_prev);
+        }
+
+        if (pcmd->right) {
+          dup2(pds[1], 1);
+        }
+
+        close(pds[0]);
+        close(pds[1]);
+
+        runcmd(pcmd->left);
+
+        //dup2(p[1], 1);
+        //close(p[0]);
+        //runcmd(pcmd->left);
+      }
+
+      close(pds[1]);
+      pipe_prev = pds[0];
+
+      pcmd = (struct pipecmd*)pcmd->right;
+
+      while (pipe_prev != -1) {
+        wait();
+        pipe_prev = -1;
+      }
+
+      //if (fork1() == 0) {
+        //dup2(p[1], 1);
+        //close(p[0]);
+        //runcmd(pcmd->right);
+      //}
+
+      //close(p[0]);
+      //close(p[1]);
+
+      //wait();
+      //wait();
     }
 
-    if (fork1() == 0) {
-      dup2(p[1], 1);
-      close(p[0]);
-      runcmd(pcmd->left);
-    }
-
-    if (fork1() == 0) {
-      dup2(p[1], 1);
-      close(p[0]);
-      runcmd(pcmd->right);
-    }
-
-    close(p[0]);
-    close(p[1]);
-
-    wait();
-    wait();
-
-    break;
+      break;
 
   case BACK:
     bcmd = (struct backcmd*)cmd;
