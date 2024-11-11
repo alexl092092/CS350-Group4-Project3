@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "x86.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -145,7 +146,6 @@ runcmd(struct cmd *cmd)
 
   case PIPE:
     pcmd = (struct pipecmd*)cmd;
-
     int pds[2];
     int pipe_prev = -1;
 
@@ -156,24 +156,21 @@ runcmd(struct cmd *cmd)
       }
 
       if (fork1() == 0) {
-
         if (pipe_prev != -1) {
-          dup2(pipe_prev, 0);
+          close(0);
+          dup(pipe_prev);
           close(pipe_prev);
         }
 
         if (pcmd->right) {
-          dup2(pds[1], 1);
+          close(1);
+          dup(pds[1]);
         }
 
         close(pds[0]);
         close(pds[1]);
 
         runcmd(pcmd->left);
-
-        //dup2(p[1], 1);
-        //close(p[0]);
-        //runcmd(pcmd->left);
       }
 
       close(pds[1]);
@@ -185,21 +182,8 @@ runcmd(struct cmd *cmd)
         wait();
         pipe_prev = -1;
       }
-
-      //if (fork1() == 0) {
-        //dup2(p[1], 1);
-        //close(p[0]);
-        //runcmd(pcmd->right);
-      //}
-
-      //close(p[0]);
-      //close(p[1]);
-
-      //wait();
-      //wait();
     }
-
-      break;
+    break;
 
   case BACK:
     bcmd = (struct backcmd*)cmd;
@@ -225,32 +209,50 @@ getcmd(char *buf, int nbuf)
 // History commands
 struct history cmd_history;
 
-void init_history() {
+void 
+init_history() {
   cmd_history.count = 0;
   cmd_history.start = 0;
   memset(cmd_history.commands, 0, sizeof(cmd_history.commands));
 }
 
-void add_to_history(char* cmd) {
-    if (strlen(cmd) == 0 || (strncmp(cmd, "hist ", 5) == 0 && !strchr(cmd + 5, '|') && !strchr(cmd + 5, ';'))) {
-      return;
+void
+add_to_history(char* cmd) {
+    // Check if command starts with "hist "
+    int is_hist = 1;
+    char *hist_str = "hist ";
+    for(int i = 0; hist_str[i] != '\0' && cmd[i] != '\0'; i++) {
+        if(cmd[i] != hist_str[i]) {
+            is_hist = 0;
+            break;
+        }
+    }
+    
+    if (strlen(cmd) == 0 || (is_hist && !strchr(cmd + 5, '|') && !strchr(cmd + 5, ';'))) {
+        return;
     }
     
     char* newline = strchr(cmd, '\n');
     if (newline)
-      *newline = 0;
+        *newline = 0;
     
     // Calculate position in circular buffer
     int pos = (cmd_history.start + (cmd_history.count % HIST_SIZE)) % HIST_SIZE;
     
     // Copy command to history buffer
-    strncpy(cmd_history.commands[pos], cmd, MAX_CMD_LEN - 1);
-    cmd_history.commands[pos][MAX_CMD_LEN - 1] = 0;
+    char *src = cmd;
+    char *dst = cmd_history.commands[pos];
+    int n = MAX_CMD_LEN - 1;
+    while(n > 0 && *src) {
+        *dst++ = *src++;
+        n--;
+    }
+    *dst = 0;  // Null terminate
     
     // Update count and start index
     cmd_history.count++;
     if (cmd_history.count > HIST_SIZE) {
-      cmd_history.start = (cmd_history.start + 1) % HIST_SIZE;
+        cmd_history.start = (cmd_history.start + 1) % HIST_SIZE;
     }
 }
 
@@ -272,36 +274,44 @@ char* get_command(int n) {
   return cmd_history.commands[pos];
 }
 
-// Handle hist command
-int handle_hist(char* cmd) {
-  // Not a hist command
-  if (strncmp(cmd, "hist ", 5) != 0) {
-    return 0;
-  }
-    
-  cmd += 5;
-  while (*cmd == ' ') cmd++;
-  
-  if (strcmp(cmd, "print\n") == 0) {
-    print_history();
-    return 1;
-  }
-  
-  // Parse number
-  int n = atoi(cmd);
-  if (n > 0 && n <= HIST_SIZE) {
-    char* hist_cmd = get_command(n);
-    if (hist_cmd) {
-      if (fork1() == 0) {
-        runcmd(parsecmd(hist_cmd));
-      }
-      wait();
-      return 1;
+int
+handle_hist(char* cmd) {
+    int is_hist = 1;
+    char *hist_str = "hist ";
+    for(int i = 0; hist_str[i] != '\0' && cmd[i] != '\0'; i++) {
+        if(cmd[i] != hist_str[i]) {
+            is_hist = 0;
+            break;
+        }
     }
-  }
-  
-  printf(2, "Invalid hist command\n");
-  return 1;
+    
+    if (!is_hist) {
+        return 0;
+    }
+    
+    cmd += 5;  // Skip past "hist "
+    while (*cmd == ' ') cmd++;
+    
+    if (strcmp(cmd, "print\n") == 0) {
+        print_history();
+        return 1;
+    }
+    
+    // Parse number
+    int n = atoi(cmd);
+    if (n > 0 && n <= HIST_SIZE) {
+        char* hist_cmd = get_command(n);
+        if (hist_cmd) {
+            if (fork1() == 0) {
+                runcmd(parsecmd(hist_cmd));
+            }
+            wait();
+            return 1;
+        }
+    }
+    
+    printf(2, "Invalid hist command\n");
+    return 1;
 }
 
 int
