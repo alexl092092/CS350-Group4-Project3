@@ -4,7 +4,7 @@
 80119958 panicked
 80100400 consputc.part.0
 80100620 printint
-80107770 digits.0
+80107290 digits.0
 00000000 exec.c
 00000000 file.c
 00000000 fs.c
@@ -36,12 +36,12 @@
 801036f0 allocproc
 80109000 first.1
 8011e734 initproc
-80107934 states.0
+801076ac states.0
 00000000 sleeplock.c
 00000000 spinlock.c
 00000000 string.c
 00000000 syscall.c
-80107960 syscalls
+80107720 syscalls
 00000000 sysfile.c
 80104b50 create
 00000000 sysproc.c
