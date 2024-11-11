@@ -12,6 +12,8 @@
 #define BACK  5
 
 #define MAXARGS 10
+#define HIST_SIZE 10
+#define MAX_CMD_LEN 100
 
 struct cmd {
   int type;
@@ -47,6 +49,12 @@ struct listcmd {
 struct backcmd {
   int type;
   struct cmd *cmd;
+};
+
+struct history {
+    char commands[HIST_SIZE][MAX_CMD_LEN];
+    int count;
+    int start;
 };
 
 int fork1(void);  // Fork but panics on failure.
@@ -179,11 +187,96 @@ getcmd(char *buf, int nbuf)
   return 0;
 }
 
+// History commands
+struct history cmd_history;
+
+void init_history() {
+  cmd_history.count = 0;
+  cmd_history.start = 0;
+  memset(cmd_history.commands, 0, sizeof(cmd_history.commands));
+}
+
+void add_to_history(char* cmd) {
+    if (strlen(cmd) == 0 || (strncmp(cmd, "hist ", 5) == 0 && !strchr(cmd + 5, '|') && !strchr(cmd + 5, ';'))) {
+      return;
+    }
+    
+    char* newline = strchr(cmd, '\n');
+    if (newline)
+      *newline = 0;
+    
+    // Calculate position in circular buffer
+    int pos = (cmd_history.start + (cmd_history.count % HIST_SIZE)) % HIST_SIZE;
+    
+    // Copy command to history buffer
+    strncpy(cmd_history.commands[pos], cmd, MAX_CMD_LEN - 1);
+    cmd_history.commands[pos][MAX_CMD_LEN - 1] = 0;
+    
+    // Update count and start index
+    cmd_history.count++;
+    if (cmd_history.count > HIST_SIZE) {
+      cmd_history.start = (cmd_history.start + 1) % HIST_SIZE;
+    }
+}
+
+// Print command history
+void print_history() {
+  int num_cmds = cmd_history.count < HIST_SIZE ? cmd_history.count : HIST_SIZE;
+  for (int i = 0; i < num_cmds; i++) {
+    int pos = (cmd_history.start + num_cmds - i - 1) % HIST_SIZE;
+    printf(2, "Previous command %d: %s\n", i + 1, cmd_history.commands[pos]);
+  }
+}
+
+// Get command by number
+char* get_command(int n) {
+  if (n < 1 || n > HIST_SIZE || n > cmd_history.count) {
+    return 0;
+  }
+  int pos = (cmd_history.start + cmd_history.count - n) % HIST_SIZE;
+  return cmd_history.commands[pos];
+}
+
+// Handle hist command
+int handle_hist(char* cmd) {
+  // Not a hist command
+  if (strncmp(cmd, "hist ", 5) != 0) {
+    return 0;
+  }
+    
+  cmd += 5;
+  while (*cmd == ' ') cmd++;
+  
+  if (strcmp(cmd, "print\n") == 0) {
+    print_history();
+    return 1;
+  }
+  
+  // Parse number
+  int n = atoi(cmd);
+  if (n > 0 && n <= HIST_SIZE) {
+    char* hist_cmd = get_command(n);
+    if (hist_cmd) {
+      if (fork1() == 0) {
+        runcmd(parsecmd(hist_cmd));
+      }
+      wait();
+      return 1;
+    }
+  }
+  
+  printf(2, "Invalid hist command\n");
+  return 1;
+}
+
 int
 main(void)
 {
   static char buf[100];
   int fd;
+
+  // Initialize command history
+  init_history();
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -202,6 +295,14 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
+
+    // Handle hist command
+    if (handle_hist(buf))
+      continue;
+        
+    // Add command to history before executing
+    add_to_history(buf);
+
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
